@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node index.ts",
-    "dev": "ts-node --watch index.ts",
+    "dev": "ts-node index.ts",
     "build": "tsc",
     "start:prod": "node dist/index.js"
   },
@@ -16,7 +16,9 @@
     "mongoose": "^8.19.3",
     "mysql2": "^3.15.3",
     "openai": "^6.8.1",
-    "redis": "^5.9.0"
+    "pdf-parse": "^1.1.1",
+    "redis": "^5.9.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.5",

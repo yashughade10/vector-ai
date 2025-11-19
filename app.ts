@@ -1,5 +1,6 @@
 import express from "express"
 import databaseRoutes from "./src/routes/tables"
+import embeddingRoutes from "./src/routes/embedding"
 
 const app = express()
 
@@ -14,6 +15,9 @@ app.use(express.static("public"))
 
 // Database routes
 app.use('/api/db', databaseRoutes)
+
+// File embedding routes
+app.use('/api/file', embeddingRoutes)
 
 // Root route with available endpoints
 app.get('/', (req, res) => {

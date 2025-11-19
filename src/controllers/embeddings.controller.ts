@@ -1,4 +1,7 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
+import XLSX from "xlsx";
 import { getConnection } from "../config/connection";
 import { storeEmbeddingInTable, addEmbeddingsColumnToTable, createEmbeddingsTable } from "../utils/embedding.utils";
 import OpenAI from 'openai';
@@ -280,6 +283,160 @@ const generateTableEmbedding = async (req: Request, res: Response) => {
     }
 };
 
+const generatePdfEmbedding = async (req: Request, res: Response) => {
+    const pdfParse = require('pdf-parse');
+    try {
+
+        const pdfPath = path.join(__dirname, "../../", "public", "top_50_scientists.pdf");
+
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        const fileStats = fs.statSync(pdfPath);
+
+        // Extract text from PDF using pdf-parse
+        const pdfData = await pdfParse(pdfBuffer);
+
+        // embedding generation logic
+        const openai = getOpenAI();
+        const embeddingResponse = await openai.embeddings.create({
+            model: 'text-embedding-3-small',
+            input: pdfData.text,
+            encoding_format: 'float'
+        })
+
+        const embeddings = embeddingResponse?.data[0]?.embedding;
+
+        // Create response in the format you specified
+        res.json({
+            success: true,
+            message: "PDF extracted successfully",
+            data: {
+                embedding: embeddings
+            }
+        });
+    } catch (error) {
+        console.error("Error processing PDF:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error processing PDF file",
+            error: error instanceof Error ? error.message : "Unknown error"
+        });
+    }
+}
+
+const generateExcelEmbedding = async (req: Request, res: Response) => {
+    try {
+        const excelPath = path.join(__dirname, "../../", "public", "indian_scientists_50.xlsx");
+
+        // Read Excel file
+        const workbook = XLSX.readFile(excelPath);
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        console.log(`Processing ${rows.length} rows from Excel file: ${excelPath}`);
+
+        // Initialize OpenAI client
+        const openai = getOpenAI();
+        const processedRows = [];
+
+        // Loop through each row and create embeddings
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i] as any;
+
+            try {
+                // Create content string from row data
+                const rowContent = Object.keys(row).map(key => {
+                    const value = row[key];
+                    if (value === null || value === undefined || value === '') {
+                        return `${key}: null`;
+                    }
+                    // Limit field length to prevent token overflow
+                    const stringValue = String(value);
+                    if (stringValue.length > 100) {
+                        return `${key}: ${stringValue.substring(0, 100)}...`;
+                    }
+                    return `${key}: ${stringValue}`;
+                }).join(', ');
+
+                const fullContent = `Excel Row ${i + 1}\nData: ${rowContent}\nDescription: Scientist information record containing details about research, achievements, and background.`;
+
+                console.log(`Processing row ${i + 1}/${rows.length}: Generating embedding...`);
+
+                // Generate embedding for this row
+                const embeddingResponse = await openai.embeddings.create({
+                    model: 'text-embedding-3-small',
+                    input: fullContent,
+                    encoding_format: 'float'
+                });
+
+                const embedding = embeddingResponse.data[0].embedding;
+
+                // Create processed row object
+                const processedRow = {
+                    rowIndex: i + 1,
+                    originalData: row,
+                    content: fullContent,
+                    embedding: embedding,
+                    metadata: {
+                        sourceFile: "indian_scientists_50.xlsx",
+                        sheetName: sheetName,
+                        rowNumber: i + 1,
+                        totalFields: Object.keys(row).length,
+                        description: "Excel row embedding for scientist data"
+                    },
+                    createdAt: new Date().toISOString(),
+                    embeddingLength: embedding.length
+                };
+
+                processedRows.push(processedRow);
+
+                // Small delay to respect OpenAI rate limits
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+            } catch (rowError) {
+                console.error(`Error processing row ${i + 1}:`, rowError);
+                processedRows.push({
+                    rowIndex: i + 1,
+                    originalData: row,
+                    error: rowError instanceof Error ? rowError.message : "Unknown error",
+                    status: "failed"
+                });
+            }
+        }
+
+        // Create summary statistics
+        const successfulRows = processedRows.filter(row => !('error' in row));
+        const failedRows = processedRows.filter(row => 'error' in row);
+
+        res.json({
+            success: true,
+            message: `Successfully processed ${rows.length} rows from Excel file and generated embeddings`,
+            data: {
+                sourceFile: "indian_scientists_50.xlsx",
+                sheetName: sheetName,
+                totalRows: rows.length,
+                successfulEmbeddings: successfulRows.length,
+                failedEmbeddings: failedRows.length,
+                processedRows: processedRows,
+                summary: {
+                    averageEmbeddingLength: successfulRows.length > 0
+                        ? Math.round(successfulRows.reduce((sum: number, row: any) => sum + row.embeddingLength, 0) / successfulRows.length)
+                        : 0,
+                    totalFields: rows.length > 0 ? Object.keys(rows[0] as any).length : 0,
+                    processingTime: new Date().toISOString()
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Error processing Excel:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error processing Excel file",
+            error: error instanceof Error ? error.message : "Unknown error"
+        });
+    }
+}
+
 // Helper function to create meaningful content from row data
 function createRowContent(tableName: string, columns: any[], row: any, rowIndex: number): string {
     const rowData = columns.map(col => {
@@ -425,5 +582,7 @@ export {
     generateTableEmbedding,
     generateTableRowEmbeddings,
     getTableEmbeddings,
-    getAllEmbeddings
+    getAllEmbeddings,
+    generatePdfEmbedding,
+    generateExcelEmbedding
 };

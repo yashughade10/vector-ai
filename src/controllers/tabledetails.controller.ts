@@ -222,14 +222,12 @@ const getTableRecords = async (req: Request, res: Response) => {
         const tableList = tables as any[];
 
         const allTableData = [];
-        for (const table of tableList) {
+        const [tableRecord] = await connection.execute(`SELECT * FROM \`${tableName}\``);
+        allTableData.push({
+            tableName: tableName,
+            records: tableRecord
+        });
 
-            const [tableRecord] = await connection.execute(`SELECT * FROM \`${tableName}\``);
-            allTableData.push({
-                tableName: tableName,
-                records: tableRecord
-            });
-        }
         res.json({
             success: true,
             message: "All table records retrieved successfully",

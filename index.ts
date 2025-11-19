@@ -1,4 +1,4 @@
-import { connectDB, getTables } from "./src/config/connection";
+import { connectDB } from "./src/config/connection";
 import { app } from "./app";
 import dotenv from "dotenv";
 
